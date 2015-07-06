@@ -31,6 +31,8 @@
 #include <nvif/ioctl.h>
 #include <nvif/unpack.h>
 
+int nvkm_cstate_prog(struct nvkm_clk *clk, struct nvkm_pstate *pstate, int cstatei);
+
 static int
 nvkm_control_mthd_pstate_info(struct nvkm_control *ctrl, void *data, u32 size)
 {
@@ -167,6 +169,100 @@ nvkm_control_mthd_pstate_user(struct nvkm_control *ctrl, void *data, u32 size)
 }
 
 static int
+nvkm_control_mthd_pstate_clock_info(struct nvkm_control *ctrl, void *data, u32 size)
+{
+	union {
+		struct nvif_control_pstate_clock_info_v0 v0;
+	} *args = data;
+	struct nvif_control_pstate_cstate *v0_cstate;
+	struct nvkm_clk *clk = ctrl->device->clk;
+	struct nvkm_pstate *pstate;
+	struct nvkm_cstate *cstate;
+	int ret = -ENOSYS, i = 0;
+
+	nvif_ioctl(&ctrl->object, "control pstate clock info size %d\n", size);
+	if (!(ret =nvif_unpack(ret, &data, &size, args->v0, 0, 0, false))) {
+		nvif_ioctl(&ctrl->object, "control pstate clock info vers %d",
+			args->v0.version);
+	} else
+		return ret;
+
+	if (clk) {
+		args->v0.gpc = nvkm_clk_read(clk, nv_clk_src_gpc);
+		args->v0.mem = nvkm_clk_read(clk, nv_clk_src_mem);
+		args->v0.states = 0;
+
+		if (clk->pstate != NVIF_CONTROL_PSTATE_ATTR_V0_STATE_CURRENT) {
+			list_for_each_entry(pstate, &clk->states, head) {
+				if (i++ == clk->pstate)
+					break;
+			}
+
+			list_for_each_entry(cstate, &pstate->list, head) {
+				v0_cstate = &args->v0.cstates[args->v0.states++];
+				v0_cstate->gpc = cstate->domain[nv_clk_src_gpc];
+				v0_cstate->mem = cstate->domain[nv_clk_src_mem];
+				v0_cstate->voltage = cstate->voltage;
+				v0_cstate->cstate = cstate->cstate;
+				if (args->v0.states == 64)
+					break;
+			}
+		}
+	}
+
+	return ret;
+}
+
+static int
+nvkm_control_mthd_pstate_set_cstate(struct nvkm_control *ctrl, void *data, u32 size)
+{
+	union {
+		struct nvif_control_pstate_set_cstate_v0 v0;
+	} *args = data;
+	struct nvkm_clk *clk = ctrl->device->clk;
+	struct nvkm_pstate *pstate;
+	struct nvkm_cstate *cstate;
+	int ret = -ENOSYS, i = 0;
+
+	nvif_ioctl(&ctrl->object, "control pstate set cstate size %d\n", size);
+	if (!(ret = nvif_unpack(ret, &data, &size, args->v0, 0, 0, false))) {
+		nvif_ioctl(&ctrl->object, "control pstate set cstate vers %d",
+			args->v0.version);
+	} else
+		return ret;
+
+	if (clk) {
+		if (clk->pstate != NVIF_CONTROL_PSTATE_ATTR_V0_STATE_CURRENT) {
+			list_for_each_entry(pstate, &clk->states, head) {
+				if (i++ == clk->pstate)
+					break;
+			}
+
+			if (!pstate)
+				return ret;
+
+			list_for_each_entry(cstate, &pstate->list, head) {
+				if (args->v0.cstate == cstate->cstate) {
+					break;
+				}
+			}
+
+			if (!cstate)
+				return ret;
+
+			nvkm_warn(&clk->subdev, "set gpu to cstate: {gpc: %d, mem: %d, voltage: %d}",
+				cstate->domain[nv_clk_src_gpc],
+				cstate->domain[nv_clk_src_mem],
+				cstate->voltage);
+
+			nvkm_cstate_prog(clk, pstate, args->v0.cstate);
+		}
+	}
+
+	return ret;
+}
+
+static int
 nvkm_control_mthd(struct nvkm_object *object, u32 mthd, void *data, u32 size)
 {
 	struct nvkm_control *ctrl = nvkm_control(object);
@@ -177,6 +273,10 @@ nvkm_control_mthd(struct nvkm_object *object, u32 mthd, void *data, u32 size)
 		return nvkm_control_mthd_pstate_attr(ctrl, data, size);
 	case NVIF_CONTROL_PSTATE_USER:
 		return nvkm_control_mthd_pstate_user(ctrl, data, size);
+	case NVIF_CONTROL_PSTATE_CLOCK_INFO:
+		return nvkm_control_mthd_pstate_clock_info(ctrl, data, size);
+	case NVIF_CONTROL_PSTATE_SET_CSTATE:
+		return nvkm_control_mthd_pstate_set_cstate(ctrl, data, size);
 	default:
 		break;
 	}

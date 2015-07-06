@@ -202,6 +202,103 @@ nouveau_debugfs_current_load(struct seq_file *m, void *data)
 	return 0;
 }
 
+static int
+nouveau_debugfs_cstate_get(struct seq_file *m, void *data)
+{
+	struct drm_info_node *node = (struct drm_info_node *) m->private;
+	struct nouveau_debugfs *debugfs = nouveau_debugfs(node->minor->dev);
+	struct nvif_object *ctrl;
+	struct nvif_control_pstate_info_v0 info = {};
+	struct nvif_control_pstate_attr_v0 attr = {};
+	struct nvif_control_pstate_clock_info_v0 cinfo = {};
+	struct nvif_control_pstate_cstate *cstate;
+	int ret, i;
+
+	if (!debugfs)
+		return -ENODEV;
+
+	ctrl = &debugfs->ctrl;
+
+	ret = nvif_mthd(ctrl, NVIF_CONTROL_PSTATE_INFO,
+			&info, sizeof(info));
+
+	if (ret)
+		return ret;
+
+	attr.state = info.pstate;
+
+	ret = nvif_mthd(ctrl, NVIF_CONTROL_PSTATE_ATTR,
+		&attr, sizeof(attr));
+	if (ret)
+		return ret;
+
+	ret = nvif_mthd(ctrl, NVIF_CONTROL_PSTATE_CLOCK_INFO,
+		&cinfo, sizeof(cinfo));
+	if (ret)
+		return ret;
+
+	seq_printf(m, "current pstate: 0x%02x\n", attr.state);
+	seq_printf(m, "available clockings: %d - %d %s\n", attr.min,
+		attr.max, attr.unit);
+
+	seq_printf(m, "available cstates for current pstate:\n");
+	for (i = 0; i < cinfo.states; i++) {
+		cstate = &cinfo.cstates[i];
+		seq_printf(m, "%d: {gpc: %d, mem: %d, voltage: %d}\n",
+			cstate->cstate, cstate->gpc, cstate->mem, cstate->voltage);
+	}
+
+	seq_printf(m, "current core: %d\n", cinfo.gpc);
+	seq_printf(m, "current memory: %d\n", cinfo.mem);
+
+	return 0;
+}
+
+static ssize_t
+nouveau_debugfs_cstate_set(struct file *file, const char __user *ubuf, size_t len, loff_t *offp)
+{
+	struct seq_file *m = file->private_data;
+	struct drm_info_node *node = (struct drm_info_node *) m->private;
+	struct nouveau_debugfs *debugfs = nouveau_debugfs(node->minor->dev);
+	struct nvif_object *ctrl;
+	struct nvif_control_pstate_set_cstate_v0 args = {};
+	int ret;
+	char buf[10] = {};
+
+	if (!debugfs)
+		return -ENODEV;
+
+	ctrl = &debugfs->ctrl;
+
+	if (len >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, ubuf, len))
+		return -EFAULT;
+
+	ret = kstrtou8(buf, 10, &args.cstate);
+	if (ret)
+		return ret;
+
+	ret = nvif_mthd(ctrl, NVIF_CONTROL_PSTATE_SET_CSTATE,
+		&args, sizeof(args));
+
+	return len;
+}
+
+static int
+nouveau_debugfs_cstate_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, nouveau_debugfs_cstate_get, inode->i_private);
+}
+
+static const struct file_operations nouveau_cstate_fops = {
+	.owner = THIS_MODULE,
+	.open = nouveau_debugfs_cstate_open,
+	.read = seq_read,
+	.write = nouveau_debugfs_cstate_set,
+};
+
 static struct drm_info_list nouveau_debugfs_list[] = {
 	{ "vbios.rom", nouveau_debugfs_vbios_image, 0, NULL },
 	{ "current_load", nouveau_debugfs_current_load, 0, NULL },
@@ -213,6 +310,7 @@ static const struct nouveau_debugfs_files {
 	const struct file_operations *fops;
 } nouveau_debugfs_files[] = {
 	{"pstate", &nouveau_pstate_fops},
+	{"cstate", &nouveau_cstate_fops},
 };
 
 static int
