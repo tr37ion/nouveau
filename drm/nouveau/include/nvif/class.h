@@ -345,6 +345,8 @@ struct nvif_perfdom_read_v0 {
 #define NVIF_CONTROL_PSTATE_INFO                                           0x00
 #define NVIF_CONTROL_PSTATE_ATTR                                           0x01
 #define NVIF_CONTROL_PSTATE_USER                                           0x02
+#define NVIF_CONTROL_PSTATE_CLOCK_INFO                                     0x03
+#define NVIF_CONTROL_PSTATE_SET_CSTATE                                     0x04
 
 struct nvif_control_pstate_info_v0 {
 	__u8  version;
@@ -385,6 +387,25 @@ struct nvif_control_pstate_user_v0 {
 	__u8  pad03[5];
 };
 
+struct nvif_control_pstate_cstate {
+	__u8  voltage;
+	__u32 gpc;
+	__u32 mem;
+	__u8  cstate;
+};
+
+struct nvif_control_pstate_clock_info_v0 {
+	__u8  version;
+	__u32 gpc;
+	__u32 mem;
+	struct nvif_control_pstate_cstate cstates[64];
+	__u8  states;
+};
+
+struct nvif_control_pstate_set_cstate_v0 {
+	__u8  version;
+	__u8  cstate;
+};
 
 /*******************************************************************************
  * DMA FIFO channels

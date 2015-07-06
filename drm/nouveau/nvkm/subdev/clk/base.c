@@ -74,7 +74,7 @@ nvkm_clk_adjust(struct nvkm_clk *clk, bool adjust,
 /******************************************************************************
  * C-States
  *****************************************************************************/
-static int
+int
 nvkm_cstate_prog(struct nvkm_clk *clk, struct nvkm_pstate *pstate, int cstatei)
 {
 	struct nvkm_subdev *subdev = &clk->subdev;
