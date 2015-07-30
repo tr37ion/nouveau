@@ -108,7 +108,7 @@ nouveau_debugfs_create_file(struct drm_minor *minor,
 }
 
 int
-nouveau_debugfs_init(struct drm_minor *minor)
+nouveau_drm_debugfs_init(struct drm_minor *minor)
 {
 	int i, ret;
 
@@ -124,7 +124,7 @@ nouveau_debugfs_init(struct drm_minor *minor)
 }
 
 void
-nouveau_debugfs_takedown(struct drm_minor *minor)
+nouveau_drm_debugfs_cleanup(struct drm_minor *minor)
 {
 	int i;
 
