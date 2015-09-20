@@ -64,6 +64,7 @@ u64  nvif_device_time(struct nvif_device *);
 #define nvxx_i2c(a) nvxx_device(a)->i2c
 #define nvxx_therm(a) nvxx_device(a)->therm
 #define nvxx_pmu(a) nvxx_device(a)->pmu
+#define nvxx_volt(a) nvxx_device(a)->volt
 
 #include <core/device.h>
 #include <engine/fifo.h>
