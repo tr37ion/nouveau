@@ -546,6 +546,16 @@ nouveau_hwmon_get_in0_label(struct device *d,
 static SENSOR_DEVICE_ATTR(in0_label, S_IRUGO,
 		nouveau_hwmon_get_in0_label, NULL, 0);
 
+static ssize_t
+nouveau_hwmon_get_power1_input(struct device *d,
+			struct device_attribute *a, char *buf)
+{
+	return sprintf(buf, "10\n");
+}
+
+static SENSOR_DEVICE_ATTR(power1_input, S_IRUGO,
+		nouveau_hwmon_get_power1_input, NULL, 0);
+
 static struct attribute *hwmon_default_attributes[] = {
 	&sensor_dev_attr_name.dev_attr.attr,
 	&sensor_dev_attr_update_rate.dev_attr.attr,
@@ -575,6 +585,10 @@ static struct attribute *hwmon_pwm_fan_attributes[] = {
 	&sensor_dev_attr_pwm1_max.dev_attr.attr,
 	NULL
 };
+static struct attribute *hwmon_power_attributes[] = {
+	&sensor_dev_attr_power1_input.dev_attr.attr,
+	NULL
+};
 
 static struct attribute *hwmon_in0_attributes[] = {
 	&sensor_dev_attr_in0_input.dev_attr.attr,
@@ -596,6 +610,9 @@ static const struct attribute_group hwmon_pwm_fan_attrgroup = {
 };
 static const struct attribute_group hwmon_in0_attrgroup = {
 	.attrs = hwmon_in0_attributes,
+};
+static const struct attribute_group hwmon_power_attrgroup = {
+	.attrs = hwmon_power_attributes,
 };
 #endif
 
@@ -660,7 +677,13 @@ nouveau_hwmon_init(struct drm_device *dev)
 	if (volt && nvkm_volt_get(volt) >= 0) {
 		ret = sysfs_create_group(&hwmon_dev->kobj,
 					&hwmon_in0_attrgroup);
+		if (ret)
+			goto error;
+	}
 
+	if (true) {
+		ret = sysfs_create_group(&hwmon_dev->kobj,
+					&hwmon_power_attrgroup);
 		if (ret)
 			goto error;
 	}
@@ -691,6 +714,7 @@ nouveau_hwmon_fini(struct drm_device *dev)
 		sysfs_remove_group(&hwmon->hwmon->kobj, &hwmon_pwm_fan_attrgroup);
 		sysfs_remove_group(&hwmon->hwmon->kobj, &hwmon_fan_rpm_attrgroup);
 		sysfs_remove_group(&hwmon->hwmon->kobj, &hwmon_in0_attrgroup);
+		sysfs_remove_group(&hwmon->hwmon->kobj, &hwmon_power_attrgroup);
 
 		hwmon_device_unregister(hwmon->hwmon);
 	}
