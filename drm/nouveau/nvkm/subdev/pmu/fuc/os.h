@@ -49,4 +49,14 @@
 #define I2C__MSG_DATA0_WR08_REG 0:7
 #define I2C__MSG_DATA1_WR08_VAL 0:7
 
+
+/* PERF: message identifiers */
+
+// OUT: load 0x0 - 0xff
+// - byte 3: PCIe load (GF100+)
+// - byte 2: Memory load
+// - byte 1: Video engines' load
+// - byte 0: GR load
+#define PERF_MSG_LOAD 1
+
 #endif
