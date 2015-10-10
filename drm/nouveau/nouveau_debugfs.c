@@ -28,6 +28,8 @@
  *  Ben Skeggs <bskeggs@redhat.com>
  */
 
+#include <nvkm/subdev/pmu.h>
+
 #include "nouveau_debugfs.h"
 #include "nouveau_drm.h"
 
@@ -43,8 +45,30 @@ nouveau_debugfs_vbios_image(struct seq_file *m, void *data)
 	return 0;
 }
 
+static int
+nouveau_debugfs_current_load(struct seq_file *m, void *data)
+{
+	struct drm_info_node *node = (struct drm_info_node *) m->private;
+	struct nouveau_drm *drm = nouveau_drm(node->minor->dev);
+	struct nvkm_pmu *pmu = nvxx_pmu(&drm->device);
+	struct nvkm_pmu_load_data load_data = { 0 };
+
+	if (!pm_runtime_suspended(drm->dev->dev)) {
+		int ret = nvkm_pmu_get_perf_data(pmu, &load_data);
+		if (ret < 0)
+			return ret;
+	}
+
+	seq_printf(m, "core: %i\n", load_data.core);
+	seq_printf(m, "mem: %i\n", load_data.mem);
+	seq_printf(m, "video: %i\n", load_data.video);
+	seq_printf(m, "pcie: %i\n", load_data.pcie);
+	return 0;
+}
+
 static struct drm_info_list nouveau_debugfs_list[] = {
 	{ "vbios.rom", nouveau_debugfs_vbios_image, 0, NULL },
+	{ "current_load", nouveau_debugfs_current_load, 0, NULL },
 };
 #define NOUVEAU_DEBUGFS_ENTRIES ARRAY_SIZE(nouveau_debugfs_list)
 

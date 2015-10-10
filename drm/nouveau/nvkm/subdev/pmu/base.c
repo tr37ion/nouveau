@@ -140,6 +140,24 @@ nvkm_pmu_recv(struct work_struct *work)
 		  process, message, data0, data1);
 }
 
+#define get_counter_index(v, i) (((v) >> ((i)*8)) & 0xff)
+
+int
+nvkm_pmu_get_perf_data(struct nvkm_pmu *pmu, struct nvkm_pmu_load_data *data)
+{
+	u32 result[2];
+
+	int ret = nvkm_pmu_send(pmu, result, PROC_PERF, PERF_MSG_LOAD, 0, 0);
+	if (ret < 0)
+		return ret;
+
+	data->core = get_counter_index(result[0], 0);
+	data->video = get_counter_index(result[0], 1);
+	data->mem = get_counter_index(result[0], 2);
+	data->pcie = get_counter_index(result[0], 3);
+	return 0;
+}
+
 static void
 nvkm_pmu_intr(struct nvkm_subdev *subdev)
 {
