@@ -35,6 +35,7 @@
 #include "nouveau_hwmon.h"
 
 #include <nvkm/subdev/volt.h>
+#include <nvkm/subdev/iccsense/priv.h>
 
 #if defined(CONFIG_HWMON) || (defined(MODULE) && defined(CONFIG_HWMON_MODULE))
 static ssize_t
@@ -550,7 +551,10 @@ static ssize_t
 nouveau_hwmon_get_power1_input(struct device *d,
 			struct device_attribute *a, char *buf)
 {
-	return sprintf(buf, "10\n");
+	struct drm_device *dev = dev_get_drvdata(d);
+	struct nouveau_drm *drm = nouveau_drm(dev);
+	struct nvkm_iccsense *iccsense = nvxx_iccsense(&drm->device);
+	return sprintf(buf, "%i\n", iccsense->driver->pwr_get(iccsense));
 }
 
 static SENSOR_DEVICE_ATTR(power1_input, S_IRUGO,
@@ -623,6 +627,7 @@ nouveau_hwmon_init(struct drm_device *dev)
 	struct nouveau_drm *drm = nouveau_drm(dev);
 	struct nvkm_therm *therm = nvxx_therm(&drm->device);
 	struct nvkm_volt *volt = nvxx_volt(&drm->device);
+	struct nvkm_iccsense *iccsense = nvxx_iccsense(&drm->device);
 	struct nouveau_hwmon *hwmon;
 	struct device *hwmon_dev;
 	int ret = 0;
@@ -681,7 +686,7 @@ nouveau_hwmon_init(struct drm_device *dev)
 			goto error;
 	}
 
-	if (true) {
+	if (iccsense) {
 		ret = sysfs_create_group(&hwmon_dev->kobj,
 					&hwmon_power_attrgroup);
 		if (ret)
