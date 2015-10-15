@@ -43,6 +43,7 @@ ina3221_poll_power_lane(struct i2c_adapter *adap, uint8_t id, uint8_t shunt)
 	if (id > 2)
 		return -EINVAL;
 
+	shunt = 5;
 	if (shunt == 0)
 		return 0;
 
