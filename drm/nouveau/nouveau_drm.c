@@ -481,7 +481,8 @@ nouveau_drm_unload(struct drm_device *dev)
 {
 	struct nouveau_drm *drm = nouveau_drm(dev);
 
-	pm_runtime_get_sync(dev->dev);
+	if (atomic_read(&dev->dev->power.usage_count) == 0)
+		pm_runtime_get_sync(dev->dev);
 	nouveau_fbcon_fini(dev);
 	nouveau_accel_fini(drm);
 	nouveau_hwmon_fini(dev);
