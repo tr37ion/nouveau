@@ -23,6 +23,7 @@
  */
 #include "priv.h"
 
+#include <subdev/clk.h>
 #include <subdev/timer.h>
 
 void
@@ -58,6 +59,16 @@ wait_for_pmu_reply(struct nvkm_pmu *pmu, u32 reply[2])
 	reply[0] = pmu->recv.data[0];
 	reply[1] = pmu->recv.data[1];
 	return 0;
+}
+
+static void
+nvkm_pmu_handle_reclk_request(struct work_struct *work)
+{
+	struct nvkm_pmu *pmu = container_of(work, struct nvkm_pmu, intr.work);
+	struct nvkm_subdev *subdev = &pmu->subdev;
+	struct nvkm_device *device = subdev->device;
+	struct nvkm_clk *clk = device->clk;
+	nvkm_clk_pmu_reclk_request(clk, pmu->intr.data[0]);
 }
 
 int
@@ -131,51 +142,61 @@ nvkm_pmu_recv(struct work_struct *work)
 	struct nvkm_pmu *pmu = container_of(work, struct nvkm_pmu, recv.work);
 	struct nvkm_subdev *subdev = &pmu->subdev;
 	struct nvkm_device *device = subdev->device;
-	u32 process, message, data0, data1;
+	struct nvkm_clk *clk = device->clk;
+	u32 process, message, data0, data1, addr, count = 0;
 
 	/* nothing to do if GET == PUT */
-	u32 addr =  nvkm_rd32(device, 0x10a4cc);
-	if (addr == nvkm_rd32(device, 0x10a4c8))
-		return;
+	while ((addr = nvkm_rd32(device, 0x10a4cc)) != nvkm_rd32(device, 0x10a4c8)) {
 
-	/* acquire data segment access */
-	do {
-		nvkm_wr32(device, 0x10a580, 0x00000002);
-	} while (nvkm_rd32(device, 0x10a580) != 0x00000002);
+		if (++count > 1)
+			nvkm_warn(subdev, "found more than one message in PMU queue\n");
 
-	/* read the packet */
-	nvkm_wr32(device, 0x10a1c0, 0x02000000 | (((addr & 0x07) << 4) +
-				pmu->recv.base));
-	process = nvkm_rd32(device, 0x10a1c4);
-	message = nvkm_rd32(device, 0x10a1c4);
-	data0   = nvkm_rd32(device, 0x10a1c4);
-	data1   = nvkm_rd32(device, 0x10a1c4);
-	nvkm_wr32(device, 0x10a4cc, (addr + 1) & 0x0f);
+		/* acquire data segment access */
+		do {
+			nvkm_wr32(device, 0x10a580, 0x00000002);
+		} while (nvkm_rd32(device, 0x10a580) != 0x00000002);
 
-	/* release data segment access */
-	nvkm_wr32(device, 0x10a580, 0x00000000);
+		/* read the packet */
+		nvkm_wr32(device, 0x10a1c0, 0x02000000 | (((addr & 0x07) << 4) +
+					pmu->recv.base));
+		process = nvkm_rd32(device, 0x10a1c4);
+		message = nvkm_rd32(device, 0x10a1c4);
+		data0   = nvkm_rd32(device, 0x10a1c4);
+		data1   = nvkm_rd32(device, 0x10a1c4);
+		nvkm_wr32(device, 0x10a4cc, (addr + 1) & 0x0f);
 
-	/* wake process if it's waiting on a synchronous reply */
-	if (pmu->recv.process) {
-		if (process == pmu->recv.process &&
-		    message == pmu->recv.message) {
-			pmu->recv.data[0] = data0;
-			pmu->recv.data[1] = data1;
-			pmu->recv.process = 0;
-			wake_up(&pmu->recv.wait);
+		/* release data segment access */
+		nvkm_wr32(device, 0x10a580, 0x00000000);
+
+		/* nobody should ever wait on this, so we handle it now */
+		if (clk && process == PROC_PERF && message == HOST_MSG_RECLOCK) {
+			pmu->intr.data[0] = data0;
+			schedule_work(&pmu->intr.work);
 			return;
 		}
-	}
 
-	/* right now there's no other expected responses from the engine,
-	 * so assume that any unexpected message is an error.
-	 */
-	nvkm_warn(subdev, "%c%c%c%c %08x %08x %08x %08x\n",
-		  (char)((process & 0x000000ff) >>  0),
-		  (char)((process & 0x0000ff00) >>  8),
-		  (char)((process & 0x00ff0000) >> 16),
-		  (char)((process & 0xff000000) >> 24),
-		  process, message, data0, data1);
+		/* wake process if it's waiting on a synchronous reply */
+		if (pmu->recv.process) {
+			if (process == pmu->recv.process &&
+			    message == pmu->recv.message) {
+				pmu->recv.data[0] = data0;
+				pmu->recv.data[1] = data1;
+				pmu->recv.process = 0;
+				wake_up(&pmu->recv.wait);
+				return;
+			}
+		}
+
+		/* right now there's no other expected responses from the engine,
+		 * so assume that any unexpected message is an error.
+		 */
+		nvkm_warn(subdev, "%c%c%c%c %08x %08x %08x %08x\n",
+			  (char)((process & 0x000000ff) >>  0),
+			  (char)((process & 0x0000ff00) >>  8),
+			  (char)((process & 0x00ff0000) >> 16),
+			  (char)((process & 0xff000000) >> 24),
+			  process, message, data0, data1);
+	}
 }
 
 #define get_counter_index(v, i) (((v) >> ((i)*8)) & 0xff)
@@ -243,6 +264,7 @@ nvkm_pmu_fini(struct nvkm_subdev *subdev, bool suspend)
 
 	nvkm_wr32(device, 0x10a014, 0x00000060);
 	flush_work(&pmu->recv.work);
+	flush_work(&pmu->intr.work);
 	return 0;
 }
 
@@ -332,5 +354,6 @@ nvkm_pmu_new_(const struct nvkm_pmu_func *func, struct nvkm_device *device,
 	pmu->func = func;
 	INIT_WORK(&pmu->recv.work, nvkm_pmu_recv);
 	init_waitqueue_head(&pmu->recv.wait);
+	INIT_WORK(&pmu->intr.work, nvkm_pmu_handle_reclk_request);
 	return 0;
 }

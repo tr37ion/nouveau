@@ -41,6 +41,15 @@ perf_eng_mc:   .b8 0
 #if NVKM_PPWR_CHIPSET >= GF100
 perf_eng_pcie: .b8 0
 #endif
+
+// dynreclocking values
+perf_reclk_last_gr:   .b8 0
+perf_reclk_last_vdec: .b8 0
+perf_reclk_last_mc:   .b8 0
+#if NVKM_PPWR_CHIPSET >= GF100
+perf_reclk_last_pcie: .b8 0
+#endif
+perf_reclk_down_count: .b8 0
 .align 4
 #endif
 
@@ -58,14 +67,14 @@ perf_eng_pcie: .b8 0
 // $r11 - data1
 // $r0  - zero
 perf_recv:
-	push $r1
-
 	imm32($r10, PROC_HOST)
 	cmp b32 $r14 $r10
 	bra ne #perf_recv_not_host
 		cmp b32 $r13 PERF_MSG_LOAD
 		bra e #perf_load
-		bra #perf_recv_exit
+		cmp b32 $r13 PERF_MSG_ACK_RECLOCK
+		bra e #perf_ack_reclk
+		ret
 
 perf_load:
 			clear b32 $r11
@@ -80,19 +89,26 @@ perf_load:
 			shl b32 $r12 8
 			ld(b8, $r12, #perf_eng_gr)
 			call(send)
-			bra #perf_recv_exit
+			ret
+
+perf_ack_reclk:
+			imm32($r12, PERF_TARGET_LOAD)
+			st(b8, #perf_reclk_last_gr, $r12)
+			st(b8, #perf_reclk_last_vdec, $r12)
+			st(b8, #perf_reclk_last_mc, $r12)
+#if NVKM_PPWR_CHIPSET >= GF100
+			st(b8, #perf_reclk_last_pcie, $r12)
+#endif
+			ret
 
 perf_recv_not_host:
 	call(perf_counter_readout)
+	call(perf_check_reclock)
 
 	ld(b32, $r14, #perf_polling_period_us)
 	call #ticks_from_us
 	call(timer)
-
-perf_recv_exit:
-	pop $r1
 	ret
-
 
 // description
 //
@@ -128,8 +144,56 @@ perf_counter_readout:
 	nv_iowr(NV_PPWR_COUNTER_COUNT(3), $r14)
 #if NVKM_PPWR_CHIPSET >= GF100
 	nv_iowr(NV_PPWR_COUNTER_COUNT(4), $r14)
+	nv_iowr(NV_PPWR_COUNTER_COUNT(5), $r14)
 #endif
 
+	ret
+
+perf_check_reclock:
+	ld(b8, $r13, #perf_eng_gr)
+	cmpu b8 $r13 (PERF_TARGET_LOAD + PERF_TARGET_SAFETY)
+	bra na #perf_check_reclock_down
+		ld(b8, $r14, #perf_reclk_last_gr)
+		cmpu b8 $r13 $r14
+		bra na #perf_check_reclock_end
+			bra #perf_check_reclock_send_not_down
+
+perf_check_reclock_down:
+	cmpu b8 $r13 (PERF_TARGET_LOAD - PERF_TARGET_SAFETY)
+	bra nb #perf_check_reclock_end
+		ld(b8, $r14, #perf_reclk_last_gr)
+		cmpu b8 $r13 $r14
+		bra nb #perf_check_reclock_end
+			bra #perf_check_reclock_send_down
+
+perf_check_reclock_send_down:
+	ld(b8, $r14, #perf_reclk_down_count)
+	cmpu b8 $r14 30
+	bra a #perf_check_reclock_send_request
+		add b8 $r14 1
+		st(b8, #perf_reclk_down_count, $r14)
+		bra #perf_check_reclock_end
+
+perf_check_reclock_send_not_down:
+	imm32($r14, 0)
+	st(b8, #perf_reclk_down_count, $r14)
+
+perf_check_reclock_send_request:
+	ld(b8, $r14, #perf_eng_gr)
+	st(b8, #perf_reclk_last_gr, $r14)
+	ld(b8, $r14, #perf_eng_mc)
+	st(b8, #perf_reclk_last_mc, $r14)
+	ld(b8, $r14, #perf_eng_vdec)
+	st(b8, #perf_reclk_last_vdec, $r14)
+#if NVKM_PPWR_CHIPSET >= GF100
+	ld(b8, $r14, #perf_eng_pcie)
+	st(b8, #perf_reclk_last_pcie, $r14)
+#endif
+	imm32($r14, PROC_HOST)
+	imm32($r13, HOST_MSG_RECLOCK)
+	bra #perf_load
+
+perf_check_reclock_end:
 	ret
 
 // description
@@ -181,6 +245,7 @@ perf_init:
 	imm32($r14,
 #if NVKM_PPWR_CHIPSET >= GF100
 		  NV_PPWR_COUNTER_SIG_BFB_PART0_REQ
+		| 0x1000
 #else
 		  NV_PPWR_COUNTER_SIG_FB_PART0_REQ
 #endif
