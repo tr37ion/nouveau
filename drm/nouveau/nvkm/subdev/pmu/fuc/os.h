@@ -57,6 +57,14 @@
 // - byte 2: Memory load
 // - byte 1: Video engines' load
 // - byte 0: GR load
-#define PERF_MSG_LOAD 1
+#define PERF_MSG_LOAD        0x1
+#define PERF_MSG_ACK_RECLOCK 0x2
+
+#define PERF_TARGET_LOAD   0xaf
+#define PERF_TARGET_SAFETY 0x17
+
+/* HOST: message identigiers */
+/* NOTE: these have to be unique so we just add 0x10000 */
+#define HOST_MSG_RECLOCK      0x10001
 
 #endif

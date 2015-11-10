@@ -28,6 +28,8 @@
 #include <subdev/bios/cstep.h>
 #include <subdev/bios/perf.h>
 #include <subdev/fb.h>
+#include <subdev/pmu.h>
+#include <subdev/pmu/fuc/os.h>
 #include <subdev/therm.h>
 #include <subdev/volt.h>
 
@@ -208,7 +210,7 @@ nvkm_pstate_prog(struct nvkm_clk *clk, int pstatei)
 		ram->func->tidy(ram);
 	}
 
-	return nvkm_cstate_prog(clk, pstate, -1);
+	return nvkm_cstate_prog(clk, pstate, clk->ucstate);
 }
 
 static void
@@ -484,6 +486,162 @@ nvkm_clk_pwrsrc(struct nvkm_notify *notify)
 	return NVKM_NOTIFY_DROP;
 }
 
+static int is_state_better(u8 cur_load, u8 target_load, int cur, int check, int margin)
+{
+	int needed_change = (cur_load * 0xff) / (target_load + margin * (cur_load > target_load ? 1 : -1));
+	int speed_change = (check * 0xff) / cur;
+	return speed_change - needed_change;
+}
+
+static int pcie_enum_to_speed[] = {
+	25,
+	50,
+	80
+};
+
+#define __tmp(i, score, pstate) if ((last_pstate_scores[i] < 0 && last_pstate_scores[i] < pcie_score) || (last_pstate_scores[i] >= 0 && last_pstate_scores[i] > pcie_score && pcie_score > 0)) { \
+	last_pstate[i] = pstate; \
+	last_pstate_scores[i] = score; \
+}
+
+
+static int calc_needed_pstate(struct nvkm_clk *clk, u8 mem_load, u8 vid_load, u8 pcie_load)
+{
+	struct nvkm_subdev *subdev = &clk->subdev;
+	struct nvkm_pstate *pstate;
+	struct nvkm_pstate *old = NULL;
+	int i = 0;
+	int last_pstate[3] = { 0 };
+	int last_pstate_scores[3] = { 0 };
+
+	list_for_each_entry(pstate, &clk->states, head) {
+		if (i == clk->pstate)
+			old = pstate;
+		++i;
+	}
+	i = 0;
+
+	if (old == NULL)
+		return -EINVAL;
+
+	list_for_each_entry(pstate, &clk->states, head) {
+		/* pcie needs a much lower target */
+		int pcie_score = is_state_better(pcie_load, 0x5f, pcie_enum_to_speed[old->pcie_speed], pcie_enum_to_speed[pstate->pcie_speed], PERF_TARGET_SAFETY * 0.5);
+		int mem_score = is_state_better(mem_load, PERF_TARGET_LOAD, old->base.domain[nv_clk_src_mem], pstate->base.domain[nv_clk_src_mem], PERF_TARGET_SAFETY);
+
+		nvkm_trace(subdev, "dyn reclock pcie score: %i for pstate %i and speed: %i\n", pcie_score, i, pcie_enum_to_speed[pstate->pcie_speed]);
+		nvkm_trace(subdev, "dyn reclock mem  score: %i for pstate %i and speed: %i\n", mem_score, i, pstate->base.domain[nv_clk_src_mem]);
+
+		if (i == 0) {
+			last_pstate[0] = i;
+			last_pstate[1] = i;
+			last_pstate_scores[0] = pcie_score;
+			last_pstate_scores[1] = mem_score;
+		} else {
+			__tmp(0, pcie_score, i);
+			__tmp(1, mem_score, i);
+		}
+
+		i += 1;
+	}
+
+	return max(last_pstate[0], last_pstate[1]);
+}
+
+static int calc_needed_cstate(struct nvkm_clk *clk, u8 core_load, int *ps)
+{
+	struct nvkm_subdev *subdev = &clk->subdev;
+	struct nvkm_pstate *pstate = NULL;
+	struct nvkm_cstate *cstate = NULL;
+	struct nvkm_cstate *old = NULL;
+	int i = 0, last_score = 0, last_cstate = 0, last_pstate = 0;
+
+	list_for_each_entry(pstate, &clk->states, head) {
+		if (i == clk->pstate) {
+			list_for_each_entry(cstate, &pstate->list, head) {
+				if (cstate->cstate == clk->ucstate)
+					old = cstate;
+			}
+		}
+		i += 1;
+	}
+	i = 0;
+
+	if (pstate == NULL)
+		return -EINVAL;
+
+	if (old == NULL)
+		old = &pstate->base;
+
+	list_for_each_entry(pstate, &clk->states, head) {
+		list_for_each_entry(cstate, &pstate->list, head) {
+
+			int score = is_state_better(core_load, PERF_TARGET_LOAD, old->domain[nv_clk_src_gpc], cstate->domain[nv_clk_src_gpc], PERF_TARGET_SAFETY);
+			nvkm_trace(subdev, "dyn reclock core score: %i for cstate %i old_speed: %i speed: %i\n", score, cstate->cstate, old->domain[nv_clk_src_gpc], cstate->domain[nv_clk_src_gpc]);
+			if (cstate->cstate == 0 && i == 0) {
+				last_score = score;
+				last_cstate = cstate->cstate;
+				last_pstate = i;
+			} else if ((last_score < 0 && last_score < score) || (last_score >= 0 && last_score > score && score > 0)) {
+				if (last_cstate != cstate->cstate) {
+					last_score = score;
+					last_cstate = cstate->cstate;
+					last_pstate = i;
+					nvkm_trace(subdev, "newest best: %i", last_cstate);
+				}
+			}
+		}
+		i += 1;
+	}
+
+	if (last_pstate > *ps)
+		*ps = last_pstate;
+
+	return last_cstate;
+}
+
+int nvkm_clk_pmu_reclk_request(struct nvkm_clk *clk, int data)
+{
+	struct nvkm_subdev *subdev = &clk->subdev;
+	struct nvkm_pmu *pmu = clk->subdev.device->pmu;
+	u8 core_load =  data & 0x000000ff;
+	u8 vid_load  = (data & 0x0000ff00) >>  8;
+	u8 mem_load  = (data & 0x00ff0000) >> 16;
+	u8 pcie_load = (data & 0xff000000) >> 24;
+	int ps, cs;
+
+	nvkm_debug(subdev, "reclock request from PMU (core: %02x mem: %02x vid: %02x pcie: %02x)\n", core_load, mem_load, vid_load, pcie_load);
+
+	ps = calc_needed_pstate(clk, mem_load, vid_load, pcie_load);
+	cs = calc_needed_cstate(clk, core_load, &ps);
+
+	nvkm_debug(subdev, "reclocking to pstate: %i cstate: %i\n", ps, cs);
+
+	if (clk->ustate_ac != ps || clk->ucstate != cs)
+		nvkm_pmu_send(pmu, NULL, PROC_PERF, PERF_MSG_ACK_RECLOCK, 0, 0);
+
+	clk->ucstate = cs;
+
+	if (clk->ustate_ac == ps) {
+		struct nvkm_pstate *pstate;
+		int i = 0;
+
+		list_for_each_entry(pstate, &clk->states, head) {
+			if (i == ps)
+				break;
+			++i;
+		}
+
+		return nvkm_cstate_prog(clk, pstate, cs);
+	} else {
+		clk->ustate_ac = ps;
+		clk->ustate_dc = ps;
+		return nvkm_pstate_calc(clk, true);
+	}
+
+	return 0;
+}
+
 /******************************************************************************
  * subdev base class implementation
  *****************************************************************************/
@@ -578,6 +736,7 @@ nvkm_clk_ctor(const struct nvkm_clk_func *func, struct nvkm_device *device,
 	clk->domains = func->domains;
 	clk->ustate_ac = -1;
 	clk->ustate_dc = -1;
+	clk->ucstate   = -1;
 	clk->allow_reclock = allow_reclock;
 
 	INIT_WORK(&clk->work, nvkm_pstate_work);
