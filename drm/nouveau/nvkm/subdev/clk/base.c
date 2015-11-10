@@ -435,7 +435,10 @@ nvkm_clk_ustate(struct nvkm_clk *clk, int req, int pwr)
 	if (ret >= 0) {
 		if (ret -= 2, pwr) clk->ustate_ac = ret;
 		else		   clk->ustate_dc = ret;
-		return nvkm_pstate_calc(clk, true);
+		if (pm_runtime_suspended(clk->subdev.device->dev))
+			return 0;
+		else
+			return nvkm_pstate_calc(clk, true);
 	}
 	return ret;
 }
