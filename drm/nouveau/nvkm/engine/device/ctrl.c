@@ -90,6 +90,9 @@ nvkm_control_mthd_pstate_attr(struct nvkm_control *ctrl, void *data, u32 size)
 			return -EINVAL;
 		if (args->v0.state >= clk->state_nr)
 			return -EINVAL;
+		if (args->v0.state == NVIF_CONTROL_PSTATE_ATTR_V0_STATE_CURRENT
+			&& pm_runtime_suspended(ctrl->device->dev))
+			return -EAGAIN;
 	} else
 		return ret;
 	domain = clk->domains;

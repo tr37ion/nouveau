@@ -97,6 +97,10 @@ nouveau_debugfs_pstate_get(struct seq_file *m, void *data)
 
 		ret = nvif_mthd(ctrl, NVIF_CONTROL_PSTATE_ATTR,
 				&attr, sizeof(attr));
+		if (ret == -EAGAIN) {
+			ret = 0;
+			continue;
+		}
 		if (ret)
 			return ret;
 
