@@ -89,9 +89,16 @@ nvkm_pmu_send(struct nvkm_pmu *pmu, u32 reply[2],
 	}
 
 	/* acquire data segment access */
-	do {
+	nvkm_wr32(device, 0x10a580, 0x00000001);
+	if (nvkm_msec(device, 2000,
+		if (nvkm_rd32(device, 0x10a580) == 0x00000001)
+			break;
 		nvkm_wr32(device, 0x10a580, 0x00000001);
-	} while (nvkm_rd32(device, 0x10a580) != 0x00000001);
+	) < 0) {
+		if (reply)
+			mutex_unlock(&subdev->mutex);
+		return -EBUSY;
+	}
 
 	/* write the packet */
 	nvkm_wr32(device, 0x10a1c0, 0x01000000 | (((addr & 0x07) << 4) +
