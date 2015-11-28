@@ -691,6 +691,7 @@ static const struct nvkm_device_pci_vendor
 nvkm_device_pci_10de_1199[] = {
 	{ 0x1458, 0xd001, "GeForce GTX 760" },
 	{ 0x1462, 0x1106, "GeForce GTX 780M", { .War00C800_0 = true } }, /* Medion Erazer X7827 */
+	{ 0x1558, 0x5106, NULL, { .War00C800_0 = true } }, /* Clevo P150SM-A */
 	{}
 };
 
