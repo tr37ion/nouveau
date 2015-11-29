@@ -24,6 +24,7 @@
 #include "priv.h"
 
 #include <subdev/bios.h>
+#include <subdev/bios/baseclock.h>
 #include <subdev/bios/boost.h>
 #include <subdev/bios/cstep.h>
 #include <subdev/bios/perf.h>
@@ -740,10 +741,25 @@ nvkm_clk_ctor(const struct nvkm_clk_func *func, struct nvkm_device *device,
 	      int index, bool allow_eng_reclock, bool allow_mem_reclock,
 	      struct nvkm_clk *clk)
 {
+	struct nvkm_bios *bios;
 	int ret, idx, arglen;
 	const char *mode;
+	struct nvbios_baseclock_header header;
 
 	nvkm_subdev_ctor(&nvkm_clk, device, index, 0, &clk->subdev);
+	bios = device->bios;
+
+	if (bios && !nvbios_baseclock_parse(bios, &header)) {
+		struct nvbios_baseclock_entry base_entry, boost_entry;
+		if (nvbios_baseclock_get_entry(bios, &header, header.base_entry, &base_entry))
+			nvkm_error(&clk->subdev, "couldn't parse base clock\n");
+		else if (nvbios_baseclock_get_entry(bios, &header, header.boost_entry, &boost_entry))
+			nvkm_error(&clk->subdev, "couldn't parse boost clock\n");
+		else
+			nvkm_info(&clk->subdev, "base: %i MHz, boost: %i MHz\n",
+				base_entry.clock_mhz / 2, boost_entry.clock_mhz / 2);
+	}
+
 	clk->func = func;
 	INIT_LIST_HEAD(&clk->states);
 	clk->domains = func->domains;
