@@ -194,8 +194,16 @@ nvkm_volt_ctor(const struct nvkm_volt_func *func, struct nvkm_device *device,
 
 	/* Assuming the non-bios device should build the voltage table later */
 	if (bios) {
+		u8 ver, hdr, cnt, len;
+		struct nvbios_vmap vmap;
+
 		nvkm_volt_parse_bios(bios, volt);
 		nvkm_debug(&volt->subdev, "min: %iuv max: %iuv\n", volt->min_voltage, volt->max_voltage);
+
+		if (nvbios_vmap_parse(bios, &ver, &hdr, &cnt, &len, &vmap) && vmap.boost != 0xff) {
+			volt->boost_max_voltage = nvkm_volt_map(volt, vmap.boost);
+			nvkm_debug(&volt->subdev, "max boost voltage: %iuv\n", volt->boost_max_voltage);
+		}
 	}
 
 	if (volt->vid_nr) {
