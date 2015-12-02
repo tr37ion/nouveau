@@ -166,6 +166,9 @@ nvkm_cstate_new(struct nvkm_clk *clk, int idx, struct nvkm_pstate *pstate)
 	if (volt && (voltage > volt->max_voltage || voltage < volt->min_voltage))
 		return -EINVAL;
 
+	if (volt && volt->boost_max_voltage && (voltage > volt->boost_max_voltage))
+		return -EINVAL;
+
 	cstate = kzalloc(sizeof(*cstate), GFP_KERNEL);
 	if (!cstate)
 		return -ENOMEM;
