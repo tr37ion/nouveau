@@ -51,14 +51,6 @@
 
 
 /* PERF: message identifiers */
-#define PERF_MSG_LOAD        1
-#define PERF_TARGET_LOAD   0xaf
-#define PERF_TARGET_SAFETY 0x10
-
-#define PERF_MSG_ACK_RECLOCK 2
-
-/* HOST: message identigiers */
-/* NOTE: these have to be unique so we just add 0x10000 */
-#define HOST_MSG_RECLOCK      0x10001
+#define PERF_MSG_LOAD 1
 
 #endif

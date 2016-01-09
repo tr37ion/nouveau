@@ -90,7 +90,6 @@ struct nvkm_clk {
 	int pstate; /* current */
 	int ustate_ac; /* user-requested (-1 disabled, -2 perfmon) */
 	int ustate_dc; /* user-requested (-1 disabled, -2 perfmon) */
-	int ucstate; /* user-requested cstate */
 	int astate; /* perfmon adjustment (base) */
 	int tstate; /* thermal adjustment (max-) */
 	int dstate; /* display adjustment (min+) */
@@ -110,8 +109,6 @@ int nvkm_clk_ustate(struct nvkm_clk *, int req, int pwr);
 int nvkm_clk_astate(struct nvkm_clk *, int req, int rel, bool wait);
 int nvkm_clk_dstate(struct nvkm_clk *, int req, int rel);
 int nvkm_clk_tstate(struct nvkm_clk *, int req, int rel);
-
-int nvkm_clk_pmu_reclk_request(struct nvkm_clk *, int data0);
 
 int nv04_clk_new(struct nvkm_device *, int, struct nvkm_clk **);
 int nv40_clk_new(struct nvkm_device *, int, struct nvkm_clk **);
