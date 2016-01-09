@@ -76,32 +76,28 @@ nvkm_clk_adjust(struct nvkm_clk *clk, bool adjust,
 /******************************************************************************
  * C-States
  *****************************************************************************/
-static struct nvkm_cstate *
-get_highest_available_cstate(struct nvkm_clk *clk, struct nvkm_pstate *pstate, bool boost)
-{
-	struct nvkm_cstate *cstate = NULL;
-	struct nvkm_volt *volt = clk->subdev.device->volt;
-
-	if (volt && !list_empty(&pstate->list)) {
-		list_for_each_entry_reverse(cstate, &pstate->list, head) {
-			if (nvkm_volt_map(volt, cstate->voltage) <= volt->max_voltage)
-				break;
-		}
-	} else {
-		cstate = &pstate->base;
-	}
-
-	return cstate;
-}
-
 int
-nvkm_cstate_prog(struct nvkm_clk *clk, struct nvkm_pstate *pstate, struct nvkm_cstate *cstate)
+nvkm_cstate_prog(struct nvkm_clk *clk, struct nvkm_pstate *pstate, int cstatei)
 {
 	struct nvkm_subdev *subdev = &clk->subdev;
 	struct nvkm_device *device = subdev->device;
 	struct nvkm_therm *therm = device->therm;
 	struct nvkm_volt *volt = device->volt;
+	struct nvkm_cstate *cstate;
 	int ret;
+
+	if (!list_empty(&pstate->list)) {
+		if (cstatei == -1)
+			cstate = list_entry(pstate->list.prev, typeof(*cstate), head);
+		else {
+			list_for_each_entry(cstate, &pstate->list, head) {
+				if (cstate->cstate == cstatei)
+					break;
+			}
+		}
+	} else {
+		cstate = &pstate->base;
+	}
 
 	if (therm) {
 		ret = nvkm_therm_cstate(therm, pstate->fanspeed, +1);
@@ -138,25 +134,6 @@ nvkm_cstate_prog(struct nvkm_clk *clk, struct nvkm_pstate *pstate, struct nvkm_c
 	}
 
 	return ret;
-}
-
-static int
-nvkm_cstate_prog_idx(struct nvkm_clk *clk, struct nvkm_pstate *pstate, int cstatei)
-{
-	struct nvkm_cstate *cstate;
-
-	if (cstatei == -1)
-		cstate = get_highest_available_cstate(clk, pstate, false);
-	else if (!list_empty(&pstate->list)) {
-		list_for_each_entry(cstate, &pstate->list, head) {
-			if (cstate->cstate == cstatei)
-				break;
-		}
-	} else {
-		cstate = &pstate->base;
-	}
-
-	return nvkm_cstate_prog(clk, pstate, cstate);
 }
 
 static void
@@ -230,7 +207,7 @@ nvkm_pstate_prog(struct nvkm_clk *clk, int pstatei)
 		ram->func->tidy(ram);
 	}
 
-	return nvkm_cstate_prog_idx(clk, pstate, clk->ucstate);
+	return nvkm_cstate_prog(clk, pstate, clk->ucstate);
 }
 
 static void
@@ -595,14 +572,9 @@ static int calc_needed_cstate(struct nvkm_clk *clk, u8 core_load, int *ps)
 		old = &pstate->base;
 
 	list_for_each_entry(pstate, &clk->states, head) {
-		struct nvkm_cstate *highest = get_highest_available_cstate(clk, pstate, false);
 		list_for_each_entry(cstate, &pstate->list, head) {
-			int score;
 
-			if (cstate == highest)
-				break;
-
-			score = is_state_better(core_load, PERF_TARGET_LOAD, old->domain[nv_clk_src_gpc], cstate->domain[nv_clk_src_gpc]);
+			int score = is_state_better(core_load, PERF_TARGET_LOAD, old->domain[nv_clk_src_gpc], cstate->domain[nv_clk_src_gpc]);
 			nvkm_trace(subdev, "dyn reclock core score: %i for cstate %i old_speed: %i speed: %i\n", score, cstate->cstate, old->domain[nv_clk_src_gpc], cstate->domain[nv_clk_src_gpc]);
 			if ((last_score < 0 && last_score < score) || (last_score >= 0 && last_score > score)) {
 				if (last_cstate != cstate->cstate) {
@@ -652,7 +624,7 @@ int nvkm_clk_pmu_reclk_request(struct nvkm_clk *clk, int data)
 			++i;
 		}
 
-		return nvkm_cstate_prog_idx(clk, pstate, cs);
+		return nvkm_cstate_prog(clk, pstate, cs);
 	} else {
 		clk->ustate_ac = ps;
 		clk->ustate_dc = ps;

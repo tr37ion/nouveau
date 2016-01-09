@@ -65,7 +65,7 @@ nvkm_volt_set(struct nvkm_volt *volt, u32 uv)
 	return ret;
 }
 
-int
+static int
 nvkm_volt_map(struct nvkm_volt *volt, u8 id)
 {
 	struct nvkm_bios *bios = volt->subdev.device->bios;
@@ -120,9 +120,6 @@ nvkm_volt_parse_bios(struct nvkm_bios *bios, struct nvkm_volt *volt)
 
 	data = nvbios_volt_parse(bios, &ver, &hdr, &cnt, &len, &info);
 	if (data && info.vidmask && info.base && info.step) {
-		volt->min_voltage = info.min;
-		volt->max_voltage = info.max;
-
 		for (i = 0; i < info.vidmask + 1; i++) {
 			if (info.base >= info.min &&
 				info.base <= info.max) {
@@ -141,17 +138,9 @@ nvkm_volt_parse_bios(struct nvkm_bios *bios, struct nvkm_volt *volt)
 				volt->vid[volt->vid_nr].uv = ivid.voltage;
 				volt->vid[volt->vid_nr].vid = ivid.vid;
 				volt->vid_nr++;
-
-				if (i == 0)
-					volt->min_voltage = ivid.voltage;
 			}
-
-			volt->max_voltage = ivid.voltage;
 		}
 		volt->vid_mask = info.vidmask;
-	} else if (data && info.type == NVBIOS_VOLT_PWM) {
-		volt->min_voltage = info.base;
-		volt->max_voltage = info.base + info.pwm_range;
 	}
 }
 
@@ -201,8 +190,6 @@ nvkm_volt_ctor(const struct nvkm_volt_func *func, struct nvkm_device *device,
 				   volt->vid[i].vid, volt->vid[i].uv);
 		}
 	}
-
-	nvkm_debug(&volt->subdev, "min voltage: %iuv max voltage: %iuv\n", volt->min_voltage, volt->max_voltage);
 }
 
 int
