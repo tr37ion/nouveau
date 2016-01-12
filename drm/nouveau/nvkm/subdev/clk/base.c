@@ -155,13 +155,18 @@ nvkm_cstate_new(struct nvkm_clk *clk, int idx, struct nvkm_pstate *pstate)
 	const struct nvkm_domain *domain = clk->domains;
 	struct nvkm_cstate *cstate = NULL;
 	struct nvbios_cstepX cstepX;
-	u8  ver, hdr;
+	struct nvbios_boostE boostE;
+	u8  ver, hdr, cnt, len;
 	u16 data;
 	int voltage;
 
 	data = nvbios_cstepXp(bios, idx, &ver, &hdr, &cstepX);
 	if (!data)
 		return -ENOENT;
+
+	data = nvbios_boostEm(bios, pstate->pstate, &ver, &hdr, &cnt, &len, &boostE);
+	if (data && (cstepX.freq < boostE.min || cstepX.freq > boostE.max))
+		return -EINVAL;
 
 	voltage = nvkm_volt_map(volt, cstepX.voltage);
 	if (volt && (voltage > volt->max_voltage || voltage < volt->min_voltage))
