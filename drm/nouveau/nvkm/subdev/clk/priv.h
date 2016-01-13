@@ -16,9 +16,11 @@ struct nvkm_clk_func {
 };
 
 int nvkm_clk_ctor(const struct nvkm_clk_func *, struct nvkm_device *, int,
-		  bool allow_reclock, struct nvkm_clk *);
+		  bool allow_eng_reclock, bool allow_mem_reclock,
+		  struct nvkm_clk *);
 int nvkm_clk_new_(const struct nvkm_clk_func *, struct nvkm_device *, int,
-		  bool allow_reclock, struct nvkm_clk **);
+		  bool allow_eng_reclock, bool allow_mem_reclock,
+		  struct nvkm_clk **);
 
 int nv04_clk_pll_calc(struct nvkm_clk *, struct nvbios_pll *, int clk,
 		      struct nvkm_pll_vals *);

@@ -514,7 +514,7 @@ nv50_clk_new_(const struct nvkm_clk_func *func, struct nvkm_device *device,
 
 	if (!(clk = kzalloc(sizeof(*clk), GFP_KERNEL)))
 		return -ENOMEM;
-	ret = nvkm_clk_ctor(func, device, index, allow_reclock, &clk->base);
+	ret = nvkm_clk_ctor(func, device, index, allow_reclock, allow_reclock, &clk->base);
 	*pclk = &clk->base;
 	if (ret)
 		return ret;

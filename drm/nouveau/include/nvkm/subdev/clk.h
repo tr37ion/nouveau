@@ -98,7 +98,8 @@ struct nvkm_clk {
 	int tstate; /* thermal adjustment (max-) */
 	int dstate; /* display adjustment (min+) */
 
-	bool allow_reclock;
+	bool allow_eng_reclock;
+	bool allow_mem_reclock;
 
 	/*XXX: die, these are here *only* to support the completely
 	 *     bat-shit insane what-was-nouveau_hw.c code
