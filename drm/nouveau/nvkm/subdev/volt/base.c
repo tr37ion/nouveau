@@ -75,13 +75,49 @@ nvkm_volt_map(struct nvkm_volt *volt, u8 id)
 
 	vmap = nvbios_vmap_entry_parse(bios, id, &ver, &len, &info);
 	if (vmap) {
-		if (info.link != 0xff) {
-			int ret = nvkm_volt_map(volt, info.link);
-			if (ret < 0)
-				return ret;
-			info.min += ret;
+		switch (ver) {
+		case 0x10:
+			if (info.link != 0xff) {
+				int ret = nvkm_volt_map(volt, info.link);
+				if (ret < 0)
+					return ret;
+				info.min += ret;
+			}
+			return info.min;
+		case 0x20: {
+			s32 result;
+			u16 temp = 40;
+			switch (info.mode) {
+			case 0x0:
+				result =  info.arg[0] / 10;
+				result += info.arg[1] * 168;
+				result += info.arg[2] * 28;
+				break;
+			case 0x1:
+				result =  (info.arg[0] / 1675) * 100;
+				result += info.arg[1]          * 100;
+				result += (info.arg[2] / 10)   * 153 * temp;
+				result += info.arg[3]          * 100 * temp;
+				result += info.arg[4]          * 41;
+				result += (info.arg[5] * (temp * temp)) / 15;
+				break;
+			default:
+				return -ENODEV;
+			}
+			result = min(max(result, (s32)info.min), (s32)info.max);
+
+			if (info.link != 0xff) {
+				int ret = nvkm_volt_map(volt, info.link);
+				if (ret < 0)
+					return ret;
+				result += ret;
+			}
+
+			return result;
 		}
-		return info.min;
+		default:
+			return -ENODEV;
+		}
 	}
 
 	return id ? id * 10000 : -ENODEV;
