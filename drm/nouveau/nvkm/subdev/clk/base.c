@@ -771,7 +771,7 @@ nvkm_clk_ctor(const struct nvkm_clk_func *func, struct nvkm_device *device,
 		else if (nvbios_baseclock_get_entry(bios, &header, header.boost_entry, &boost_entry))
 			nvkm_error(&clk->subdev, "couldn't parse boost clock\n");
 		else {
-			clk->boost_mode = nvkm_longopt(device->cfgopt, "NvBoost", 1);
+			clk->boost_mode = nvkm_longopt(device->cfgopt, "NvBoost", 3);
 			clk->base_clock = base_entry.clock_mhz * 1000;
 			clk->boost_clock = boost_entry.clock_mhz * 1000;
 			nvkm_info(&clk->subdev, "base: %i MHz, boost: %i MHz\n",
