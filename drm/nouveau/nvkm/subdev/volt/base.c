@@ -83,7 +83,7 @@ nvkm_volt_set(struct nvkm_volt *volt, u32 uv)
 }
 
 int
-nvkm_volt_map(struct nvkm_volt *volt, u8 id)
+nvkm_volt_map(struct nvkm_volt *volt, u8 id, int temp)
 {
 	struct nvkm_bios *bios = volt->subdev.device->bios;
 	struct nvbios_vmap_entry info;
@@ -95,7 +95,7 @@ nvkm_volt_map(struct nvkm_volt *volt, u8 id)
 		switch (ver) {
 		case 0x10:
 			if (info.link != 0xff) {
-				int ret = nvkm_volt_map(volt, info.link);
+				int ret = nvkm_volt_map(volt, info.link, temp);
 				if (ret < 0)
 					return ret;
 				info.min += ret;
@@ -103,7 +103,6 @@ nvkm_volt_map(struct nvkm_volt *volt, u8 id)
 			return info.min;
 		case 0x20: {
 			s32 result;
-			u16 temp = 40;
 			switch (info.mode) {
 			case 0x0:
 				result =  info.arg[0] / 10;
@@ -124,7 +123,7 @@ nvkm_volt_map(struct nvkm_volt *volt, u8 id)
 			result = min(max(result, (s32)info.min), (s32)info.max);
 
 			if (info.link != 0xff) {
-				int ret = nvkm_volt_map(volt, info.link);
+				int ret = nvkm_volt_map(volt, info.link, temp);
 				if (ret < 0)
 					return ret;
 				result += ret;
@@ -148,7 +147,7 @@ nvkm_volt_set_id(struct nvkm_volt *volt, u8 id, int condition)
 	if (volt->func->set_id)
 		return volt->func->set_id(volt, id, condition);
 
-	ret = nvkm_volt_map(volt, id);
+	ret = nvkm_volt_map(volt, id, 40);
 	if (ret >= 0) {
 		int prev = nvkm_volt_get(volt);
 		if (!condition || prev < 0 ||
@@ -254,7 +253,8 @@ nvkm_volt_ctor(const struct nvkm_volt_func *func, struct nvkm_device *device,
 		nvkm_debug(&volt->subdev, "min: %iuv max: %iuv\n", volt->min_voltage, volt->max_voltage);
 
 		if (nvbios_vmap_parse(bios, &ver, &hdr, &cnt, &len, &vmap) && vmap.boost != 0xff) {
-			volt->boost_max_voltage = nvkm_volt_map(volt, vmap.boost);
+			volt->boost_max_voltage = nvkm_volt_map(volt, vmap.boost, 0);
+			volt->boost_max_voltage = max(volt->boost_max_voltage, (u32)nvkm_volt_map(volt, vmap.boost, 95));
 			nvkm_debug(&volt->subdev, "max boost voltage: %iuv\n", volt->boost_max_voltage);
 		}
 	}

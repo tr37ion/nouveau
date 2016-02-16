@@ -168,7 +168,7 @@ nvkm_cstate_new(struct nvkm_clk *clk, int idx, struct nvkm_pstate *pstate)
 	if (data && (cstepX.freq < boostE.min || cstepX.freq > boostE.max))
 		return -EINVAL;
 
-	voltage = nvkm_volt_map(volt, cstepX.voltage);
+	voltage = nvkm_volt_map(volt, cstepX.voltage, 40);
 	if (volt && (voltage > volt->max_voltage || voltage < volt->min_voltage))
 		return -EINVAL;
 
