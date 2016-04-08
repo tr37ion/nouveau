@@ -35,6 +35,7 @@
 #include "nouveau_hwmon.h"
 
 #include <nvkm/subdev/iccsense.h>
+#include <nvkm/subdev/pmu.h>
 #include <nvkm/subdev/volt.h>
 
 #if defined(CONFIG_HWMON) || (defined(MODULE) && defined(CONFIG_HWMON_MODULE))
@@ -596,6 +597,82 @@ nouveau_hwmon_get_power1_input(struct device *d, struct device_attribute *a,
 static SENSOR_DEVICE_ATTR(power1_input, S_IRUGO,
 			  nouveau_hwmon_get_power1_input, NULL, 0);
 
+static ssize_t
+nouveau_hwmon_get_core_input(struct device *d, struct device_attribute *a,
+			     char *buf)
+{
+	struct drm_device *dev = dev_get_drvdata(d);
+	struct nouveau_drm *drm = nouveau_drm(dev);
+	struct nvkm_pmu *pmu = nvxx_pmu(&drm->device);
+	struct nvkm_pmu_load_data load_data = { 0 };
+	int result = nvkm_pmu_get_perf_data(pmu, &load_data);
+
+	if (result < 0)
+		return result;
+
+	return sprintf(buf, "%i\n", load_data.core);
+}
+
+static SENSOR_DEVICE_ATTR(power2_input, S_IRUGO,
+			  nouveau_hwmon_get_core_input, NULL, 0);
+
+static ssize_t
+nouveau_hwmon_get_mem_input(struct device *d, struct device_attribute *a,
+			     char *buf)
+{
+	struct drm_device *dev = dev_get_drvdata(d);
+	struct nouveau_drm *drm = nouveau_drm(dev);
+	struct nvkm_pmu *pmu = nvxx_pmu(&drm->device);
+	struct nvkm_pmu_load_data load_data = { 0 };
+	int result = nvkm_pmu_get_perf_data(pmu, &load_data);
+
+	if (result < 0)
+		return result;
+
+	return sprintf(buf, "%i\n", load_data.mem);
+}
+
+static SENSOR_DEVICE_ATTR(power3_input, S_IRUGO,
+			  nouveau_hwmon_get_mem_input, NULL, 0);
+
+static ssize_t
+nouveau_hwmon_get_core_clock_input(struct device *d, struct device_attribute *a,
+			     char *buf)
+{
+	struct drm_device *dev = dev_get_drvdata(d);
+	struct nouveau_drm *drm = nouveau_drm(dev);
+	struct nvkm_clk *clk = nvxx_clk(&drm->device);
+
+	int result = nvkm_clk_read(clk, nv_clk_src_gpc);
+
+	if (result < 0)
+		return result;
+
+	return sprintf(buf, "%i\n", result);
+}
+
+static SENSOR_DEVICE_ATTR(power4_input, S_IRUGO,
+			  nouveau_hwmon_get_core_clock_input, NULL, 0);
+
+static ssize_t
+nouveau_hwmon_get_mem_clock_input(struct device *d, struct device_attribute *a,
+			     char *buf)
+{
+	struct drm_device *dev = dev_get_drvdata(d);
+	struct nouveau_drm *drm = nouveau_drm(dev);
+	struct nvkm_clk *clk = nvxx_clk(&drm->device);
+
+	int result = nvkm_clk_read(clk, nv_clk_src_mem);
+
+	if (result < 0)
+		return result;
+
+	return sprintf(buf, "%i\n", result);
+}
+
+static SENSOR_DEVICE_ATTR(power5_input, S_IRUGO,
+			  nouveau_hwmon_get_mem_clock_input, NULL, 0);
+
 static struct attribute *hwmon_default_attributes[] = {
 	&sensor_dev_attr_name.dev_attr.attr,
 	&sensor_dev_attr_update_rate.dev_attr.attr,
@@ -639,6 +716,14 @@ static struct attribute *hwmon_power_attributes[] = {
 	NULL
 };
 
+static struct attribute *hwmon_playground_attributes[] = {
+	&sensor_dev_attr_power2_input.dev_attr.attr,
+	&sensor_dev_attr_power3_input.dev_attr.attr,
+	&sensor_dev_attr_power4_input.dev_attr.attr,
+	&sensor_dev_attr_power5_input.dev_attr.attr,
+	NULL
+};
+
 static const struct attribute_group hwmon_default_attrgroup = {
 	.attrs = hwmon_default_attributes,
 };
@@ -656,6 +741,9 @@ static const struct attribute_group hwmon_in0_attrgroup = {
 };
 static const struct attribute_group hwmon_power_attrgroup = {
 	.attrs = hwmon_power_attributes,
+};
+static const struct attribute_group hwmon_playground_attrgroup = {
+	.attrs = hwmon_playground_attributes,
 };
 #endif
 
@@ -732,6 +820,11 @@ nouveau_hwmon_init(struct drm_device *dev)
 			goto error;
 	}
 
+	ret = sysfs_create_group(&hwmon_dev->kobj,
+				 &hwmon_playground_attrgroup);
+	if (ret)
+		goto error;
+
 	hwmon->hwmon = hwmon_dev;
 
 	return 0;
@@ -759,6 +852,7 @@ nouveau_hwmon_fini(struct drm_device *dev)
 		sysfs_remove_group(&hwmon->hwmon->kobj, &hwmon_fan_rpm_attrgroup);
 		sysfs_remove_group(&hwmon->hwmon->kobj, &hwmon_in0_attrgroup);
 		sysfs_remove_group(&hwmon->hwmon->kobj, &hwmon_power_attrgroup);
+		sysfs_remove_group(&hwmon->hwmon->kobj, &hwmon_playground_attrgroup);
 
 		hwmon_device_unregister(hwmon->hwmon);
 	}
